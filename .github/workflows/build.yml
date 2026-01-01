@@ -1,0 +1,71 @@
+name: Build CraftGround Mod
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. 获取代码
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # 2. 设置 Java 21 环境 (指南要求 JDK 21)
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+
+    # 3. 设置 Python 3.11 环境 (指南要求 Python 3.11)
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    # 4. 安装系统级依赖 (对应指南中的 Linux 依赖)
+    # 包含 protoc (protobuf-compiler), cmake, ninja, 以及 OpenGL 库 (libgl-dev, libglew-dev)
+    - name: Install System Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler cmake ninja-build libgl1-mesa-dev libglew-dev
+
+    # 5. 安装 Python 依赖 (用于辅助构建和生成代码)
+    # 指南提到的 Troubleshooting 部分指出 protobuf 版本问题，这里确保安装最新版
+    - name: Install Python Dependencies
+      run: |
+        pip install --upgrade pip
+        pip install gymnasium Pillow numpy protobuf typing_extensions psutil torch build cmake
+
+    # 6. 生成 Proto 文件 (核心步骤)
+    # 必须在编译代码前执行，完全按照指南中的 "Option 2" 手动命令执行
+    - name: Generate Protobuf Files
+      run: |
+        cd src
+        protoc proto/action_space.proto --python_out=craftground
+        protoc proto/initial_environment.proto --python_out=craftground
+        protoc proto/observation_space.proto --python_out=craftground
+        protoc proto/action_space.proto --java_out=craftground/MinecraftEnv/src/main/java/ --kotlin_out=craftground/MinecraftEnv/src/main/java/
+        protoc proto/initial_environment.proto --java_out=craftground/MinecraftEnv/src/main/java/ --kotlin_out=craftground/MinecraftEnv/src/main/java/
+        protoc proto/observation_space.proto --java_out=craftground/MinecraftEnv/src/main/java/ --kotlin_out=craftground/MinecraftEnv/src/main/java/
+
+    # 7. 构建 Minecraft Mod (Gradle)
+    # 这会生成 .jar 文件
+    - name: Build with Gradle
+      working-directory: ./src/craftground/MinecraftEnv
+      run: |
+        chmod +x gradlew
+        ./gradlew build
+
+    # 8. 上传构建产物
+    # 构建完成后，将生成的 .jar 文件上传到 GitHub Actions 的 Artifacts 中方便下载
+    - name: Upload Mod Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: craftground-mod-1.21.1
+        path: src/craftground/MinecraftEnv/build/libs/*.jar
